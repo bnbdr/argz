@@ -332,7 +332,7 @@ import logging
 import re
 from collections import OrderedDict
 
-version = (0, 1, 1)
+version = (0, 1, 2)
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -550,12 +550,12 @@ class Arg(object):
         return oparts
 
     def _check_min_max(self, v):
-        if self.min is not None and self.min < v:
+        if self.min is not None and v < self.min:
             raise ArgumentRejectedError(
                 '"{}" must be greater than or equal to {}, {} was provided'.format(self.name, self.min, v))
-        if self.max is not None and self.max < v:
+        if self.max is not None and v > self.max:
             raise ArgumentRejectedError(
-                '"{}" must be lesser than or equal to {}, {} was provided'.format(self.name, self.max, v))
+                '"{}" must be less than or equal to {}, {} was provided'.format(self.name, self.max, v))
 
     def parse(self, argv):
         assert isinstance(
