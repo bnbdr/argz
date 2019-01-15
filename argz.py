@@ -293,6 +293,7 @@ If you use a single route that accepts an argument whose name is in `HELP_OPTION
 Tested on
 ---------
 - Python 2.7.15, windows 10
+- Python 3.7.2, windows 10
 
 
 Troubleshooting
@@ -304,56 +305,66 @@ set ARGZ_LOG=<LOG_LEVEL>
 ```
 `LOG_LEVEL` will be passed to `Logger.setLevel`
 
+Testing
+-------
+added some unit-tests, run `runtests.bat`
+
 License
 ----
 MIT
 
-
-todo
+TODO
 ----
 - Allow mixture of file input and command-line input
 - Normalize/strip underscores ( `_` ) in argument names
 - Handle name collisions with `Route` object properties
-- Support python 3.x
-- Support python 2.x with `__future__`
-- Infer from type annotaitons/hints
+- Infer from type annotaitons/hints (py3 signature?)
 
-Have a look at this abomination
-------
-This file is a polyglot of sorts. I'm utilizing the module docstring as the readme for this library
-
+Take a look at the code:
+------------------------
 ```python
 '''  # #  '''
-
+from __future__ import print_function
+import warnings
 import inspect
+
 import sys
 import os
 import logging
 import re
 from collections import OrderedDict
+    
+version = (0, 1, 3)
 
-version = (0, 1, 2)
+if sys.version_info.major > 2:
+    unicode = str
+    basestring = (str, bytes)
+
+def _get_handler(stream=sys.stdout):
+    handler = logging.StreamHandler(stream)
+    formatter = logging.Formatter(
+            '%(asctime)s | %(name)s | %(levelname)-9s | %(lineno)4d | %(message)s', '%Y%m%d %H:%M:%S')
+    handler.setFormatter(formatter)
+    return handler
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+default_log_handler = _get_handler()
+
 try:
     _loglevel = int(os.getenv('ARGZ_LOG', 0))
 except:
-    pass
-else:
-    if _loglevel:
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter(
-            '%(asctime)s | %(name)s | %(levelname)-9s | %(lineno)4d | %(message)s', '%Y%m%d %H:%M:%S')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(_loglevel)
-        logger.info('logging level set to: %d' % _loglevel)
+    _loglevel = 0
+
+if _loglevel:
+    logger.addHandler(default_log_handler)
+    logger.setLevel(_loglevel)
+    logger.info('logging level set to: %d' % _loglevel)
 
 
 class ArgzError(Exception):
     def __init__(self, message='', extras='', route=''):
-        super(ArgzError, self).__init__(message)
+        self.message = message
         self.extras = extras
         self.route = route
 
@@ -386,9 +397,9 @@ class Arg(object):
         # inferred from definition
         'name',
         'required',
-        'isswitch',
-        'isvararg',
-        'iskwarg',
+        '_isswitch',
+        '_isvararg',
+        '_iskwarg',
 
         # user supplied
         'description',
@@ -652,9 +663,14 @@ class Route(object):
 
         self.__fref = fref
         self.__doc = doc if doc is not None else fref.__doc__
-        self.__filename = os.path.basename(inspect.getsourcefile(self.__fref))
-
-        argspec = inspect.getargspec(fref)
+        try:
+            self.__filename = os.path.basename(inspect.getsourcefile(self.__fref))
+        except TypeError:
+            self.__filename = '__interpreter__'
+        with warnings.catch_warnings():
+            # python 3 changed getargspec to deprecated so it will print warnings.  Python 3.6 reversed that decision so will be ignored: https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
+            warnings.simplefilter("ignore")
+            argspec = inspect.getargspec(fref) 
         self.__kwargs = None
         self.__varargs = None
 
@@ -706,7 +722,7 @@ class Route(object):
     def __call__(self, parts):
         logger.info("'%s' route called with %s", self.__fref.__name__, parts)
 
-        leftover = self.__args.values()  # should not change the dict values
+        leftover = list(self.__args.values())  # should not change the dict values
         parsed_dict = {}
         while parts:
             argv = None
@@ -831,7 +847,7 @@ class Route(object):
                     "skipping parse using default: '%s' on '%s' ", leftover_arg.default, leftover_arg.name)
                 parsed_dict[leftover_arg.name] = leftover_arg.default
 
-        names = self.__args.keys()
+        names = list(self.__args.keys())
         out_args = {}
         for argn in parsed_dict:
             out_args[names.index(argn)] = parsed_dict[argn]
@@ -949,7 +965,7 @@ class TargetList(object):
         return self._targets[i]
 
     def getDefaultRoute(self):  # TODO: what if shadows name?
-        return self._targets.values()[0] if len(self._targets) == 1 else None
+        return list(self._targets.values())[0] if len(self._targets) == 1 else None
 
     def __dir__(self):
         return self._targets.keys()
@@ -979,7 +995,9 @@ class TargetList(object):
             ss.append("|> {}".format(repr(r)))
         return '\n'.join(ss)
 
-    __nonzero__ = __bool__ = __len__
+    __nonzero__ = __len__
+    def __bool__(self):
+        return self.__len__() > 0
 
 
 route = TargetList()
@@ -1026,7 +1044,7 @@ def _parse(parts, help_options):
 
 def _get_parts_from_args(args):
     filename = ''
-    if not args:
+    if args is None:
         logger.info('using sys.argv')
         filename = sys.argv[0]
         parts = sys.argv[1:]
@@ -1036,12 +1054,19 @@ def _get_parts_from_args(args):
             filename = sys.argv[1]
             logger.info('%s', filename)
             parts = sys.argv[2:]
+            filename = os.path.basename(filename)
     else:
+        if not args:
+            return [], filename
+
+        if isinstance(args, (list,)):
+            return args[:], filename # return a copy of the list
+
         try:
+            # TODO: remove the try/except
             parts = args.split(ARG_SPLIT)
-            logger.info("parsed input using '%s'", ARG_SPLIT)
+            logger.info("parsed input split using '%s'", ARG_SPLIT)
         except AttributeError:
-            parts = args
             logger.info("using args input as is")
 
     # option to read parts from file
@@ -1058,10 +1083,75 @@ def _get_parts_from_args(args):
         parts = fileparts
 
     logger.info("arguments: %s", str(parts))
-    return parts, os.path.basename(filename) if filename else ''
+    return parts, filename
+
+def clear():
+    '''
+    resets existing all routes
+    '''
+    global route
+    route = TargetList()
 
 
-def go(args=None, custom_help_options=HELP_OPTIONS):
+def parse(args=None, custom_help_options=HELP_OPTIONS, stderr=sys.stderr):
+    '''
+    Parse arguments and return tuple of target function, arglist and kwargs
+
+    :param str/list/None args: The arguments to parse. use sys.argv if None. 
+    :param list custom_help_options: if first argument is in this list will show verbose help.  Use if the default help flags override an argument name. 
+    '''
+    
+    parts, filename = _get_parts_from_args(args)
+    try:
+        retval = _parse(parts, custom_help_options)
+    except RequestHelpError as e:
+        if e.message:
+            if e.message in custom_help_options:
+                print(repr(route), file=stderr)  # detailed help
+            else:  # is a route help string
+                print(e.message, file=stderr)
+        else:
+            if len(route) == 1:
+                print('', file=stderr)
+                print('Usage:', file=stderr)
+                print(filename + ' ' + str(route), file=stderr)  # basic usage
+            else:
+                print(route, file=stderr)  # basic usage
+            print('', file=stderr)
+            print('for detailed help, use any of ' +
+                  str(custom_help_options).replace("'", ''), file=stderr)
+            if len(route) > 1:
+                print('you can specify the route name (e.g. -h MY_ROUTE)', file=stderr)
+    except MissingRouteError as e:
+        if e.message:
+            print('route `{}` not found'.format(e.message), file=stderr)
+        else:
+            print('please choose a route:', file=stderr)
+        print(route, file=stderr)
+    except ArgumentMissingError as e:
+        print(e.message, file=stderr)
+        print(e.extras, file=stderr)
+        if e.route:
+            print('Usage:', file=stderr)
+            print(filename + ' ' + _get_route_argshelp(e.route), file=stderr)
+
+    except ArgumentRejectedError as e:
+        print(e.message, file=stderr)
+        print(e.extras, file=stderr)
+        print(filename + ' ' + str(e.route or route), file=stderr)
+    except ArgzError:
+        # general error
+        print(e.message, file=stderr)
+        print(e.extras, file=stderr)
+        print(e.route, file=stderr)
+    else:
+        logger.debug('arguments parsed successfully')
+        return retval
+
+    logger.warning('failed parsing args')
+    return None
+
+def go(args=None, custom_help_options=HELP_OPTIONS, stderr=sys.stderr):
     '''
     Parse arguments and call appropriate route
 
@@ -1069,51 +1159,12 @@ def go(args=None, custom_help_options=HELP_OPTIONS):
     :param list custom_help_options: if first argument is in this list will show verbose help.  Use if the default help flags override an argument name. 
     '''
 
-    parts, filename = _get_parts_from_args(args)
-    try:
-        f, parsed, parsed_kw = _parse(parts, custom_help_options)
-    except RequestHelpError as e:
-        if e.message:
-            if e.message in custom_help_options:
-                print(repr(route))  # detailed help
-            else:  # is a route help string
-                print(e.message)
-        else:
-            if len(route) == 1:
-                print('')
-                print('Usage:')
-                print(filename + ' ' + str(route))  # basic usage
-            else:
-                print(route)  # basic usage
-            print('')
-            print('for detailed help, use any of ' +
-                  str(custom_help_options).replace("'", ''))
-            if len(route) > 1:
-                print('you can specify the route name (e.g. -h MY_ROUTE)')
-    except MissingRouteError as e:
-        if e.message:
-            print('route `{}` not found'.format(e.message))
-        else:
-            print('please choose a route:')
-        print(route)
-    except ArgumentMissingError as e:
-        print(e.message)
-        print(e.extras)
-        if e.route:
-            print 'Usage:'
-            print(filename + ' ' + _get_route_argshelp(e.route))
+    parsed = parse(args, custom_help_options, stderr)
+    if not parsed:
+        # TODO: consider throwing exception?
+        return None
 
-    except ArgumentRejectedError as e:
-        print(e.message)
-        print(e.extras)
-        print(filename + ' ' + str(e.route or route))
-    except ArgzError:
-        # general error
-        print(e.message)
-        print(e.extras)
-        print(e.route)
-    else:
-        logger.debug('arguments parsed successfully')
-        logger.info('calling %s with %s, %s', f.__name__, parsed, parsed_kw)
-        # let target throw exceptions as they please
-        return f(*parsed, **parsed_kw)
+    f, arglist, argdict = parsed
+    logger.info('%s with %s, %s', f.__name__, arglist, argdict)
+    # let target throw exceptions as they please
+    return f(*arglist, **argdict)
