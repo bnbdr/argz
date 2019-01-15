@@ -103,7 +103,7 @@ def func(alphanum, filepath, key, novalidation):
 # ...
 f = argz.route(func)
 
-f.alphanum.validator = '[A-Z0-9]{2,}'
+f.alphanum.validator = '[a-zA-Z0-9]{2,}'
 f.filepath.validator = os.path.isfile
 f.key.validator = {'option1': 1, 'option2': 2}
 
@@ -525,7 +525,9 @@ class Arg(object):
         return [self.adapter] if callable(self.adapter) else self.adapter or []
 
     def _try_parsing(self, parts):
-
+        """
+        _try_parsing always returns list, even with 1 value
+        """
         val = self._get_validator()
         adapters = self._get_adapters()
         oparts = []
@@ -561,6 +563,12 @@ class Arg(object):
         return oparts
 
     def _check_min_max(self, v):
+        if self.max:
+            logger.debug('max:{}, v:{}'.format(self.max, v))
+
+        if self.min:
+            logger.debug('min:{}, v:{}'.format(self.min, v))
+
         if self.min is not None and v < self.min:
             raise ArgumentRejectedError(
                 '"{}" must be greater than or equal to {}, {} was provided'.format(self.name, self.min, v))
@@ -577,8 +585,9 @@ class Arg(object):
 
         v = self._try_parsing(parts)
         if not self.split:
-            self._check_min_max(len(parts))
+            # if not using split, min/max are checked against the value itself. 
             v = v[0]  # unpack list of 1 item
+            self._check_min_max(v)
 
         return v
 
@@ -733,7 +742,8 @@ class Route(object):
             if p.startswith('--'):
                 argn = p[2:]
                 logger.debug('%s is named', p)
-            elif p.startswith('-'):
+            elif p.startswith('-') and self.__kwargs is not None:
+                # switches are only allowed with kwargs
                 argn = p[1:]
                 supplied_switch = True
                 logger.debug('%s is a switch', p)
