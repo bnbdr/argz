@@ -218,5 +218,17 @@ class ReadmeExample(ArgzTest):
             f, al, kw = self.check_res(ret)
             self.assertEqual(al[1], True)
 
+    def test_fallback(self):
+        argval = ['ABC123', 'tests/json_data.json', 'option1']
+        r = argz.route(test_routes.route_validator)
+        
+        ret = argz.parse(argval, stderr=self.argzerr)
+        self.assertEqual(ret, None, 'should have failed validation')
+        r.novalidation.fallback = '123'
+        ret = argz.parse(argval, stderr=self.argzerr)
+        f, al, kw = self.check_res(ret)
+        self.assertEqual(al[-1], r.novalidation.fallback)
+
+
 if __name__ == '__main__':
     unittest.main()
