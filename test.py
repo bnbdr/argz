@@ -204,6 +204,19 @@ class ReadmeExample(ArgzTest):
         f, al, kw = self.check_res(ret)
         self.assertEqual(al[0], [3, 2, 1])
 
+    def test_switch_basic(self):
+        import json
+        r = argz.route(test_routes.route_json_dict)
+        argval = 'tests/json_data.json -dbg'
+        r.jsondict.adapter = [open, json.load]    # will be chained
+
+        with warnings.catch_warnings():
+            # py3 json.load warns about not closing file
+            warnings.simplefilter("ignore")
+            ret = argz.parse(argval, stderr=self.argzerr)
+
+            f, al, kw = self.check_res(ret)
+            self.assertEqual(al[1], True)
 
 if __name__ == '__main__':
     unittest.main()
