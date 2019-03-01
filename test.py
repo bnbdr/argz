@@ -218,6 +218,36 @@ class ReadmeExample(ArgzTest):
             f, al, kw = self.check_res(ret)
             self.assertEqual(al[1], True)
 
+    def test_switch_with_optional(self):
+        r = argz.route(test_routes.test_switch)
+        pos_arg_val = 'some_string'
+        opt_arg_val = 'opt'
+        argval = '{} -dbg'.format(pos_arg_val)
+
+        ret = argz.parse(pos_arg_val, stderr=self.argzerr)
+
+        f, al, kw = self.check_res(ret)
+        self.assertEqual(al[0], pos_arg_val)
+        self.assertEqual(al[1], None)
+        self.assertEqual(al[2], False)
+
+
+        ret = argz.parse(argval, stderr=self.argzerr)
+
+        f, al, kw = self.check_res(ret)
+        self.assertEqual(al[0], pos_arg_val)
+        self.assertEqual(al[1], None)
+        self.assertEqual(al[2], True)
+
+        argval = '{} {}'.format(pos_arg_val, opt_arg_val)
+        ret = argz.parse(argval, stderr=self.argzerr)
+
+        f, al, kw = self.check_res(ret)
+        self.assertEqual(al[0], pos_arg_val)
+        self.assertEqual(al[1], opt_arg_val)
+        self.assertEqual(al[2], False)
+
+
     def test_fallback(self):
         argval = ['ABC123', 'tests/json_data.json', 'option1']
         r = argz.route(test_routes.route_validator)

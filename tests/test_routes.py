@@ -21,3 +21,5 @@ def route_min(count):
     """
     pass
 
+def test_switch(pos1, opt1=None, dbg=False): 
+    pass

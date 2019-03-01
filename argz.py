@@ -742,7 +742,7 @@ class Route(object):
             if p.startswith('--'):
                 argn = p[2:]
                 logger.debug('%s is named', p)
-            elif p.startswith('-') and self.__kwargs is not None:
+            elif p.startswith('-'):
                 # switches are only allowed with kwargs
                 argn = p[1:]
                 supplied_switch = True
