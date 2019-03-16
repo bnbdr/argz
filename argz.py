@@ -334,7 +334,7 @@ import logging
 import re
 from collections import OrderedDict
     
-version = (0, 1, 3)
+version = (0, 1, 4)
 
 if sys.version_info.major > 2:
     unicode = str
